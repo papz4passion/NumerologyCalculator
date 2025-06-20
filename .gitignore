@@ -1,12 +1,8 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -130,6 +126,11 @@ celerybeat.pid
 # Environments
 .env
 .venv
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
 env/
 venv/
 ENV/
@@ -192,3 +193,21 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.venv/
+
+# Streamlit
+.streamlit/
+
+# MacOS
+.DS_Store
+
+# Project-specific
+calculation_history.json
