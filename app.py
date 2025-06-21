@@ -31,6 +31,12 @@ def setup_page():
     if "history_filter" not in st.session_state:
         st.session_state["history_filter"] = []
     
+    # Initialize name variables
+    if "first_name" not in st.session_state:
+        st.session_state["first_name"] = ""
+    if "last_name" not in st.session_state:
+        st.session_state["last_name"] = ""
+    
     st.title("🔢 Numerology Calculator")
     st.markdown("---")
     st.markdown(
@@ -82,27 +88,28 @@ def display_results(name: str, numerology_value: int, meaning: str):
         )
 
 
-def process_calculation(name_input: str):
-    """Process the numerology calculation."""
-    is_valid, error_message = validate_name_input(name_input)
+def process_calculation(full_name: str):
+    """Process the numerology calculation for the full name."""
+    is_valid, error_message = validate_name_input(full_name)
     
     if not is_valid:
         st.error(f"❌ {error_message}")
         return
     
     try:
-        numerology_value = calculate_numerology_value(name_input)
+        # Calculate based on the combined name
+        numerology_value = calculate_numerology_value(full_name)
         meaning = get_numerology_meaning(numerology_value)
         
         # Display the calculation results
-        display_results(name_input, numerology_value, meaning)
+        display_results(full_name, numerology_value, meaning)
         
         # Show calculation steps and get the details
         st.markdown("**Step-by-step Calculation:**")
-        calculation_details = show_calculation_steps(name_input, numerology_value)
+        calculation_details = show_calculation_steps(full_name, numerology_value)
         
         # Save to history (only if name is unique)
-        was_saved = save_to_history(name_input, numerology_value, meaning, calculation_details)
+        was_saved = save_to_history(full_name, numerology_value, meaning, calculation_details)
         if was_saved:
             st.success("✅ Calculation saved to history!")
     except ValueError as e:
@@ -122,24 +129,48 @@ def main():
     
     # Input section
     st.subheader("Enter a Name")
-    name_input = st.text_input(
-        label="Name",
-        placeholder="Enter a name (e.g., John Doe, Mary Jane)...",
-        help="Enter any name to calculate its numerology value. Spaces and other whitespace will be ignored."
-    )
+    
+    # Create two columns for first and last name inputs
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        first_name = st.text_input(
+            label="First Name",
+            placeholder="Enter first name (e.g., John)...",
+            help="Enter the first name to calculate its numerology value."
+        )
+    
+    with col2:
+        last_name = st.text_input(
+            label="Last Name",
+            placeholder="Enter last name (e.g., Doe)...",
+            help="Enter the last name to calculate its numerology value."
+        )
+    
+    # Concatenate names for calculation and display
+    full_name = f"{first_name} {last_name}".strip()
+    
+    # Store the name parts in session state for later use
+    if 'first_name' not in st.session_state:
+        st.session_state['first_name'] = ''
+    if 'last_name' not in st.session_state:
+        st.session_state['last_name'] = ''
+        
+    st.session_state['first_name'] = first_name
+    st.session_state['last_name'] = last_name
     
     if st.button("Calculate Numerology Value", type="primary", key="calculate_button"):
-        if not name_input:
-            st.warning("⚠️ Please enter a name to calculate its numerology value.")
+        if not full_name:
+            st.warning("⚠️ Please enter at least one name field to calculate the numerology value.")
             return
             
         # Check if name is a duplicate
-        if handle_duplicate_name(name_input):
+        if handle_duplicate_name(full_name):
             # Name exists and was handled (either viewed or ignored)
             return
         else:
             # Process the calculation for new name
-            process_calculation(name_input)
+            process_calculation(full_name)
     
     st.markdown("---")
     
@@ -244,7 +275,7 @@ def save_to_history(name: str, numerology_value: int, meaning: str, calculation_
     Save the calculation to history JSON file.
     
     Args:
-        name (str): The name that was calculated
+        name (str): The full name that was calculated
         numerology_value (int): The calculated numerology value
         meaning (str): The meaning of the value
         calculation_details (dict, optional): Details of how the calculation was performed
@@ -266,6 +297,15 @@ def save_to_history(name: str, numerology_value: int, meaning: str, calculation_
                 history = []
     else:
         history = []
+        
+    # Get first and last name components
+    # First try from session state, then fall back to parsing the full name
+    first_name = st.session_state.get('first_name', '')
+    last_name = st.session_state.get('last_name', '')
+    
+    # If we don't have first/last name from session state, parse them from the full name
+    if not first_name and not last_name and name:
+        first_name, last_name = parse_name_components(name)
     
     # Create timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -274,6 +314,8 @@ def save_to_history(name: str, numerology_value: int, meaning: str, calculation_
     new_entry = {
         "timestamp": timestamp,
         "name": name,
+        "first_name": first_name,
+        "last_name": last_name,
         "numerology_value": numerology_value,
         "meaning": meaning
     }
@@ -317,21 +359,48 @@ def load_history():
 
 
 def display_history_entry(entry):
-    """Display a single history entry as a card."""
+    """
+    Display a single history entry as a card.
+    Compatible with both new format (first_name/last_name) and old format entries.
+    """
+    # Create a local copy to avoid modifying the original entry
+    display_entry = entry.copy()
+    
+    # For backward compatibility: parse first and last names if not present
+    if "first_name" not in display_entry or "last_name" not in display_entry:
+        if "name" in display_entry:
+            first, last = parse_name_components(display_entry["name"])
+            display_entry["first_name"] = first
+            display_entry["last_name"] = last
+    
     with st.container():
         col1, col2 = st.columns([1, 2])
         
         with col1:
-            st.markdown(f"**Date:** {entry['timestamp']}")
-            st.markdown(f"**Name:** {entry['name']}")
-            st.markdown(f"**Value:** {entry['numerology_value']}")
+            st.markdown(f"**Date:** {display_entry['timestamp']}")
+            
+            # Display names based on what's available
+            first = display_entry.get("first_name", "").strip()
+            last = display_entry.get("last_name", "").strip()
+            
+            if first and last:
+                st.markdown(f"**First Name:** {first}")
+                st.markdown(f"**Last Name:** {last}")
+            elif first:
+                st.markdown(f"**First Name:** {first}")
+            elif last:
+                st.markdown(f"**Last Name:** {last}")
+            else:
+                st.markdown(f"**Name:** {display_entry['name']}")
+                
+            st.markdown(f"**Value:** {display_entry['numerology_value']}")
         
         with col2:
-            st.markdown(f"**Meaning:** {entry['meaning']}")
+            st.markdown(f"**Meaning:** {display_entry['meaning']}")
             
             # Display calculation details if available
-            if "calculation" in entry:
-                display_calculation_history(entry["calculation"])
+            if "calculation" in display_entry:
+                display_calculation_history(display_entry["calculation"])
         
         st.markdown("---")
 
@@ -422,14 +491,80 @@ def is_name_in_history(name: str) -> bool:
         bool: True if name exists in history, False otherwise
     """
     history = load_history()
+    name = name.lower().strip()
     
     # Case-insensitive search
     for entry in history:
-        if entry["name"].lower() == name.lower():
+        # Check against full name
+        if entry["name"].lower().strip() == name:
             return True
+            
+        # Check against combined first and last name if they exist separately
+        if "first_name" in entry and "last_name" in entry:
+            combined = f"{entry.get('first_name', '')} {entry.get('last_name', '')}".lower().strip()
+            if combined == name:
+                return True
     
     return False
 
+
+def get_display_name(entry):
+    """
+    Helper function to get the appropriate display name from an entry.
+    Works with both new format (first_name/last_name) and old format entries.
+    """
+    # For entries with separated first and last name fields
+    if "first_name" in entry and "last_name" in entry:
+        first = entry.get("first_name", "").strip()
+        last = entry.get("last_name", "").strip()
+        
+        if first and last:
+            return f"{first} {last}"
+        elif first:
+            return first
+        elif last:
+            return last
+            
+    # For entries with only the full name
+    if "name" in entry and entry["name"]:
+        return entry["name"].strip()
+        
+    # Fallback
+    return "Unknown"
+
+def display_existing_calculation(entry):
+    """
+    Display an existing calculation entry.
+    Compatible with both new format (first_name/last_name) and old format entries.
+    """
+    # Create a local copy to avoid modifying the original entry
+    display_entry = entry.copy()
+    
+    # For backward compatibility: parse first and last names if not present
+    if "first_name" not in display_entry or "last_name" not in display_entry:
+        if "name" in display_entry:
+            first, last = parse_name_components(display_entry["name"])
+            display_entry["first_name"] = first
+            display_entry["last_name"] = last
+    
+    display_name = get_display_name(display_entry)
+    st.subheader(f"Existing calculation for '{display_name}'")
+    
+    # Display the first and last name separately if both exist
+    if display_entry.get("first_name") and display_entry.get("last_name"):
+        st.markdown(f"**First Name:** {display_entry['first_name']}")
+        st.markdown(f"**Last Name:** {display_entry['last_name']}")
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.metric("Numerology Value", display_entry["numerology_value"])
+    with col2:
+        st.info(f"**Meaning:** {display_entry['meaning']}")
+    
+    # Show calculation details if available
+    if "calculation" in display_entry:
+        st.markdown("**Calculation Details:**")
+        display_calculation_history(display_entry["calculation"])
 
 def handle_duplicate_name(name: str) -> bool:
     """
@@ -443,29 +578,50 @@ def handle_duplicate_name(name: str) -> bool:
     """
     if not is_name_in_history(name):
         return False
-        
+    
+    name = name.strip()
     st.warning(f"⚠️ '{name}' is already in your calculation history.")
     
     # Ask the user if they want to view the existing calculation
     if st.button("View Existing Calculation", key="view_existing"):
         # Find and display the existing entry
         history = load_history()
+        name_lower = name.lower()
+        
         for entry in history:
-            if entry["name"].lower() == name.lower():
-                st.subheader(f"Existing calculation for '{entry['name']}'")
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.metric("Numerology Value", entry["numerology_value"])
-                with col2:
-                    st.info(f"**Meaning:** {entry['meaning']}")
-                
-                # Show calculation details if available
-                if "calculation" in entry:
-                    st.markdown("**Calculation Details:**")
-                    display_calculation_history(entry["calculation"])
+            # Check if the entry matches by full name (case-insensitive)
+            if entry["name"].lower() == name_lower:
+                display_existing_calculation(entry)
                 break
+            
+            # Check if the entry matches by combined first name and last name
+            if "first_name" in entry and "last_name" in entry:
+                combined = f"{entry.get('first_name', '')} {entry.get('last_name', '')}".strip().lower()
+                if combined == name_lower:
+                    display_existing_calculation(entry)
+                    break
     
     return True
+
+
+def parse_name_components(full_name: str) -> tuple:
+    """
+    Parse a full name into first name and last name components.
+    
+    Args:
+        full_name (str): The full name string
+        
+    Returns:
+        tuple: (first_name, last_name)
+    """
+    parts = full_name.strip().split(' ', 1)
+    
+    if len(parts) == 1:
+        # Only one name provided
+        return parts[0], ""
+    else:
+        # First name and last name(s)
+        return parts[0], parts[1]
 
 
 if __name__ == "__main__":
